@@ -1,0 +1,182 @@
+REPORT zimpresor.
+
+INCLUDE zimpresor_imprimir_formularf01.
+
+*Declaraciones de variables 
+DATA:     w_ctrlop  TYPE ssfctrlop,
+          w_compop  TYPE ssfcompop,
+          w_return  TYPE ssfcrescl,
+          otfdata   LIKE itcoo OCCURS 0 WITH HEADER LINE,
+          lc_name   TYPE rs38l_fnam,
+          intab     TYPE soli_tab,
+          objbin    TYPE solix_tab,
+          wa_intab  TYPE LINE OF soli_tab,
+          wa_objbin TYPE LINE OF solix_tab,
+          objpack   LIKE sopcklsti1 OCCURS 0 WITH HEADER LINE.
+
+DATA: date1       TYPE dats,
+      carrier1    TYPE s_carr_id,
+      connection1 TYPE s_conn_id,
+      usu         TYPE sy-uname,
+      lv_va       TYPE string.
+*Variable para función de llamado del smartform
+DATA: l_funcion TYPE rs38l_fnam.
+
+TYPES BEGIN OF ty_sbook.
+        INCLUDE STRUCTURE sflight.
+TYPES END OF ty_sbook.
+
+TYPES: BEGIN OF ty_sbook1,
+        carrier TYPE s_carr_id,
+        date    TYPE d,
+
+END OF ty_sbook1.
+
+DATA: it_sbook TYPE STANDARD TABLE OF ty_sbook.
+*  VALORES ASIGNADOS A LAS VARIABLES PARA LA BUSQUEDA DE DATOS
+START-OF-SELECTION.
+
+  carrier1    = 'LH'.
+  connection1 = '0400'.
+  date1       = '20150808'.
+  usu         = sy-uname.
+
+  SELECT *
+    FROM sflight
+    UP TO 45 ROWS
+    INTO CORRESPONDING FIELDS OF TABLE it_sbook
+    WHERE carrid     EQ 'LH'.
+* Funcion que devuelve el modulo de funcion del smartform
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname           = 'ZPRUEBA_UPU' "NOMBRE DEL SMARTFORM QUE SE VA A LLAMAR
+*     variant            = SPACE
+*     direct_call        = SPACE
+    IMPORTING
+      fm_name            = l_funcion
+    EXCEPTIONS
+      no_form            = 1
+      no_function_module = 2
+      OTHERS             = 3.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+*llama al modulo de funcion del SF
+  w_ctrlop-getotf = 'X'.
+  w_ctrlop-no_dialog = 'X'.
+  w_compop-tdnoprev = 'X'.
+  IF sy-subrc EQ 0.
+* Dependiendo del smartform, se colocan los parametros de entrada y las tablas que el necesita el smartform
+    CALL FUNCTION l_funcion
+      EXPORTING
+        fldate             = date1
+        carrier            = carrier1
+        connection         = connection1
+        usuario            = usu
+        output_options     = w_compop " Parametros necesarios para trasformar el smartform en PDF
+        control_parameters = w_ctrlop " Parametros necesarios para trasformar el smartform en PDF
+      IMPORTING
+        job_output_info    = w_return " Parametros necesarios para trasformar el smartform en PDF
+      TABLES
+        gs_sbook           = it_sbook
+      EXCEPTIONS
+        formatting_error   = 1
+        internal_error     = 2
+        send_error         = 3
+        user_canceled      = 4
+        OTHERS             = 5.
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+      WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ELSE.
+      otfdata[] = w_return-otfdata[].
+    ENDIF.
+  ENDIF.
+
+*En la tabla otfdata nos queda guardado el formulario en formtao OTF
+*Ahora sólo resta convertir el OTF en PDF
+  LOOP AT otfdata.
+    wa_intab = otfdata.
+    APPEND wa_intab TO intab.
+    CLEAR wa_intab.
+  ENDLOOP.
+***********************************************************************
+*call FUNCTION 'SX_OBJECT_CONVERT_OTF_PDF'
+*  EXPORTING
+*    format_src      = 'OTF'
+*    format_dst      = 'PDF'
+**    addr_type       =
+*    devtype         = 'LP01'
+**    funcpara        =
+*  CHANGING
+*    transfer_bin    = objpack-transf_bin
+*    content_txt     = intab
+*    content_bin     = objbin
+*    objhead         = intab
+*    len             = objpack-doc_size
+*  EXCEPTIONS
+*    err_conv_failed = 1
+*    others          = 2
+*  .
+***********************************************************************
+**********************************************************************
+*** Otra funcion para convertir un smartform en PDF
+
+  DATA: lv_len_in TYPE i,
+        li_otf    TYPE itcoo OCCURS 0 WITH HEADER LINE,
+        li_tline  TYPE STANDARD TABLE OF tline WITH HEADER LINE.
+* Los datos en formato otf se asigna a la tabla interna para su uso con la funcion CONVERT_OTF
+  li_otf[] = w_return-otfdata[].
+
+  CALL FUNCTION 'CONVERT_OTF'
+    EXPORTING
+      format                = 'PDF'
+      max_linewidth         = 132
+*    archive_index         = SPACE
+*    copynumber            = 0
+*    ascii_bidi_vis2log    = SPACE
+*    pdf_delete_otftab     = SPACE
+*    pdf_username          = SPACE
+*    pdf_preview           = SPACE
+*    use_cascading         = SPACE
+    IMPORTING
+      bin_filesize          = lv_len_in
+*    bin_file              =
+    TABLES
+      otf                   = li_otf[]
+      lines                 = li_tline "Tabla de salida con los datos, con el formato deseado
+*  EXCEPTIONS
+*    err_max_linewidth     = 1
+*    err_format            = 2
+*    err_conv_not_possible = 3
+*    err_bad_otf           = 4
+*    others                = 5
+    .
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+**********************************************************************
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+  CALL FUNCTION 'GUI_DOWNLOAD'
+    EXPORTING
+      bin_filesize            = lv_len_in
+      filename                = 'C:\Users\jadominguezc\Documents\prueba.pdf'
+      filetype                = 'BIN'
+    TABLES
+      data_tab                = li_tline
+    EXCEPTIONS
+      file_write_error        = 1
+      no_batch                = 2
+      gui_refuse_filetransfer = 3
+      invalid_type            = 4
+      no_authority            = 5
+      unknown_error           = 6.
+
+  "PERFORM imprimir_formulario. 
