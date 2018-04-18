@@ -1,6 +1,6 @@
 REPORT z_alv_upu.
 INCLUDE z_alv_upu_f01.
-
+" ejemplo de alv
 TABLES: sflight, tvarvc.
 
 TYPE-POOLS slis.
