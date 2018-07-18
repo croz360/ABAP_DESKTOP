@@ -6,8 +6,8 @@ DATA:   date1       type dats,
         connection1 type s_conn_id,
         usu         type sy-uname,
         lv_va       type string,
-        l_funcion   type rs381_fnam. " variable nombre de la funcion para llamar al smartform
-
+        l_funcion   type rs381_fnam. " variable para el nombre de la funcion para llamar al smartform
+"Creación de toda la estrucutura de la tabla estandar de SAP
 types begin of ty_sbook.
         include structure sflight.
 types end of   ty_sbook.
@@ -29,7 +29,7 @@ start-of-selection.
 * llamado de la funcion para asignar el nombre del smartform y a la variable l_FUNCION
 call function 'SSF_FUNCTION_MODULE_NAME'
     EXPORTING
-        formname            = 'ZPRUEBA_UPU'
+        formname            = 'ZPRUEBA_UPU'"Nombre del smartfom
     IMPORTING               = l_funcion
         no_form             = 1
         no_function_module  = 2
